@@ -94,7 +94,7 @@ ui <- fluidPage(
   h4("Consulta Dinámica de Importaciones y Exportaciones", align = "center"), hr(),
   sidebarLayout(
     sidebarPanel(
-      textAreaInput("pregunta", "Haz tu pregunta en lenguaje natural (emplea el código de (1) producto del catalogo para mejores resultados):",
+      textAreaInput("pregunta", "Haz tu pregunta en lenguaje natural (emplea el código de (1) producto del catálogo para mejores resultados):",
                     placeholder = "Evolución de la importación de 0403202000", rows = 3),
       actionButton("enviar", "Consultar con IA", class = "btn-primary", icon = icon("robot")),
       actionButton("limpiar", "Limpiar", class = "btn-secondary", icon = icon("broom")), hr(),
