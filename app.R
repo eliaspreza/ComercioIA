@@ -109,11 +109,11 @@ ui <- fluidPage(
     .value-box-label { font-size: 14px; color: #6c757d; margin: 0; text-transform: uppercase; }
   "))),
   
-  h1("| Dashboard_IA::Comercio Exterior de El Salvador |", align = "center", style = "margin-bottom: 0;"),
+  h1("| Dashboard_IA::Comercio Exterior Agropecuario de El Salvador |", align = "center", style = "margin-bottom: 0;"),
   h4("Consulta Dinámica de Importaciones y Exportaciones", align = "center"), hr(),
   sidebarLayout(
     sidebarPanel(
-      textAreaInput("pregunta", "Haz tu pregunta en lenguaje natural (emplea el código de 1 producto del catalogo para mejores resultados):",
+      textAreaInput("pregunta", "Haz tu pregunta en lenguaje natural (emplea el código de 1 producto del catálogo para mejores resultados):",
                     placeholder = "Evolución de la importación de 0403202000", rows = 3),
       actionButton("enviar", "Consultar con IA", class = "btn-primary", icon = icon("robot")),
       actionButton("limpiar", "Limpiar", class = "btn-secondary", icon = icon("broom")), hr(),
