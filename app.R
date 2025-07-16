@@ -1,7 +1,7 @@
 
 # =================================================================
 # APLICACIÓN SHINY: CHATBOT DE COMERCIO EXTERIOR CON IA Y GRÁFICOS
-# Versión 4.8 (ValueBox con totales por pestaña)
+# Versión 5.4 (Filtro de catálogo hasta SECCION IV)
 # =================================================================
 
 # 1. CARGA DE PAQUETES
@@ -16,8 +16,10 @@ library(openai)
 library(jsonlite)
 library(plotly)
 library(tidyr)
+library(writexl)
+library(janitor)
 
-# 2. CARGA Y LIMPIEZA DE DATOS
+# 2. CARGA DE DATOS Y OBJETOS GLOBALES
 # -----------------------------------------------------------------
 tryCatch({
   df_bmx <- read_xlsx("df_comercioT.xlsx")
@@ -25,24 +27,42 @@ tryCatch({
 }, error = function(e) {
   message("Archivo 'df_comercioT.xlsx' no encontrado. Usando datos de ejemplo.")
   df_bmx <<- data.frame(
-    pais = rep(c("ESTADOS UNIDOS", "GUATEMALA", "HONDURAS", "MEXICO", "Total"), each = 32),
-    codigo_arancelario = rep(c("0713330000", "0901110000", "0407210000"), length.out = 160),
-    descripcion = rep(c("- - Frijoles", "- - Café sin tostar", "- - Huevos frescos"), length.out = 160),
-    medida = rep(c("valor", "Kilogramos"), each = 80),
-    anio = rep(2022:2023, 80),
-    cantidad = runif(160, 5000, 1000000),
-    Elemento = rep(c("Importacion", "Exportacion"), each = 40, times = 2)
+    pais = rep(c("ESTADOS UNIDOS", "GUATEMALA", "HONDURAS", "MEXICO"), each = 32),
+    codigo_arancelario = rep(c("0713330000", "0901110000", "0407210000"), length.out = 128),
+    descripcion = rep(c("- - Frijoles", "- - Café sin tostar", "- - Huevos frescos"), length.out = 128),
+    medida = rep(c("valor", "Kilogramos"), each = 64),
+    anio = rep(2022:2023, 64),
+    cantidad = runif(128, 5000, 1000000),
+    Elemento = rep(c("Importacion", "Exportacion"), each = 32, times = 2)
   )
 })
 
+tryCatch({
+  df_catalogo <- read_xlsx("df_catalogo_vf.xlsx")
+  message("Catálogo 'df_catalogo_vf.xlsx' cargado exitosamente.")
+}, error = function(e) {
+  message("Archivo 'df_catalogo_vf.xlsx' no encontrado. Usando catálogo de ejemplo.")
+  df_catalogo <<- data.frame(
+    Seccion = c("SECCION I - ANIMALES VIVOS", "SECCION II - PRODUCTOS DEL REINO VEGETAL", "SECCION V - PRODUCTOS MINERALES"),
+    Apartado = c("01 - ANIMALES VIVOS", "09 - CAFÉ, TÉ, YERBA MATE Y ESPECIAS", "25 - SAL; AZUFRE; TIERRAS Y PIEDRAS"),
+    Descripcion = c("Frijol de Ejemplo", "Café de Ejemplo", "Sal de Ejemplo"),
+    Codigo_Arancelario = c("0708200000", "0901113000", "2501001000")
+  )
+})
+
+# --- LIMPIEZA Y REFERENCIAS ---
 paises_a_excluir <- c("Total", "MUNDO")
 df_bmx <- df_bmx %>%
   filter(!pais %in% paises_a_excluir)
 
-# --- LISTAS DE REFERENCIA Y VALORES GLOBALES ---
-productos_disponibles <- df_bmx %>%
-  distinct(descripcion, codigo_arancelario) %>%
+df_catalogo_limpio <- df_catalogo %>%
+  janitor::clean_names()
+
+# --- MEJORA FINAL: Filtrar el catálogo para incluir solo hasta la SECCION IV ---
+productos_disponibles <- df_catalogo_limpio %>%
+  filter(str_detect(seccion, "^SECCION (I|II|III|IV)")) %>%
   arrange(descripcion)
+
 paises_disponibles <- sort(unique(df_bmx$pais))
 max_anio_global <- max(df_bmx$anio, na.rm = TRUE)
 
@@ -60,9 +80,9 @@ interpretar_pregunta_con_ia <- function(pregunta_usuario) {
   
   tryCatch({
     respuesta_ia <- create_chat_completion(
-      model = "gpt-4.1-nano", #"gpt-4o",
+      model = "gpt-4.1-nano",
       messages = list(list("role" = "system", "content" = prompt_sistema), list("role" = "user", "content" = pregunta_usuario)),
-      temperature = 0.7, max_tokens = 1200 #300 a 0 temp
+      temperature = 0.7, max_tokens = 1200
     )
     json_extraido <- str_extract(respuesta_ia$choices$message.content, "(?s)\\{.*\\}")
     if (is.na(json_extraido)) { message("La IA no devolvió un bloque JSON."); return(NULL) }
@@ -74,7 +94,6 @@ interpretar_pregunta_con_ia <- function(pregunta_usuario) {
 # -----------------------------------------------------------------
 ui <- fluidPage(
   theme = shinytheme("cerulean"),
-  # --- MEJORA: CSS para las cajas de valor ---
   tags$head(tags$style(HTML("
     .catalog-box { max-height: 250px; overflow-y: auto; border: 1px solid #ccc; padding: 5px; border-radius: 4px; }
     .value-box { 
@@ -94,20 +113,17 @@ ui <- fluidPage(
   h4("Consulta Dinámica de Importaciones y Exportaciones", align = "center"), hr(),
   sidebarLayout(
     sidebarPanel(
-      textAreaInput("pregunta", "Haz tu pregunta en lenguaje natural (emplea el código de (1) producto del catálogo para mejores resultados):",
+      textAreaInput("pregunta", "Haz tu pregunta en lenguaje natural (emplea el código de 1 producto del catalogo para mejores resultados):",
                     placeholder = "Evolución de la importación de 0403202000", rows = 3),
       actionButton("enviar", "Consultar con IA", class = "btn-primary", icon = icon("robot")),
       actionButton("limpiar", "Limpiar", class = "btn-secondary", icon = icon("broom")), hr(),
       tags$b("Ideas para preguntar:"),
       tags$ul(
-        
         tags$li("Para frijoles: Evolución de importación de 0708200000"),
         tags$li("Para papaya: Evolución de la importación de 0807200000"),
         tags$li("Para aguacate:Importación de 0804400000 en el año 2021"),
         tags$li("Para café:Exportación de 0901113000"),
         tags$li("Para Maíz blanco: Evolución de la importación de 1005903000 por país"),
-        #tags$li("Importación total de café"),
-        #tags$li("Top países a los que exportamos en 2022")
       ), hr(),
       tags$b("Referencias de la Base de Datos:"),
       textInput("filtro_producto", "Buscar en catálogo de productos:", placeholder = "Ej: café, frijol..."),
@@ -117,9 +133,15 @@ ui <- fluidPage(
         tags$summary("Ver Países disponibles", style = "cursor: pointer;"),
         tags$div(class = "catalog-box", tags$ul(lapply(paises_disponibles, tags$li)))
       ), hr(),
+      
+      downloadButton("descargar_catalogo", "Descargar Catálogo", class = "btn-success", icon = icon("download")),
+      tags$p("El archivo se guardará en formato Excel (.xlsx) en su carpeta de descargas.", 
+             style = "font-size: 10px; color: #757575; font-style: italic;"),
+      hr(),
+      
       div(style = "text-align: center; padding-top: 20px;",
           tags$img(src = "https://i.postimg.cc/G36BghFf/Logo.png", height = "80px"), hr(),
-          h5("Fuente: Elaborado por DICA con información de BCR (hasta mayo 2025) / Impulsada por IA.", style = "margin-top: 5px; color: #666;")
+          h5("Fuente: Elaborado por DICA con información de BCR (del año 2000 hasta mayo 2025) / Impulsada por IA.", style = "margin-top: 5px; color: #666;")
       ), width = 3
     ),
     mainPanel(uiOutput("resultados_ui"))
@@ -203,7 +225,7 @@ server <- function(input, output, session) {
       productos_filtrados <- productos_disponibles %>%
         filter(
           str_detect(tolower(descripcion), termino_busqueda_lower) |
-            str_detect(codigo_arancelario, termino_busqueda_lower)
+            str_detect(as.character(codigo_arancelario), termino_busqueda_lower)
         )
     }
     tagList(
@@ -214,7 +236,14 @@ server <- function(input, output, session) {
         tags$div(class = "catalog-box",
                  if (nrow(productos_filtrados) > 0) {
                    tags$ul(lapply(1:nrow(productos_filtrados), function(i) {
-                     tags$li(paste(productos_filtrados$descripcion[i], "-", productos_filtrados$codigo_arancelario[i]))
+                     tags$li(paste(
+                       productos_filtrados$seccion[i], 
+                       productos_filtrados$apartado[i], 
+                       productos_filtrados$descripcion[i], 
+                       "-", 
+                       productos_filtrados$codigo_arancelario[i],
+                       sep = " | "
+                     ))
                    }))
                  } else {
                    tags$p("No se encontraron productos.")
@@ -223,6 +252,15 @@ server <- function(input, output, session) {
       )
     )
   })
+  
+  output$descargar_catalogo <- downloadHandler(
+    filename = function() {
+      "df_catalogo_vf.xlsx"
+    },
+    content = function(file) {
+      file.copy("df_catalogo_vf.xlsx", file)
+    }
+  )
   
   generar_grafico_plotly <- function(df_plot, unidad_medida) {
     req(df_plot)
@@ -250,7 +288,6 @@ server <- function(input, output, session) {
     }
   }
   
-  # Tablas
   output$tabla_valor <- renderDT({
     df_val <- datos_valor(); req(df_val)
     datatable(df_val, caption = "Resultados en Valor (USD).", filter = 'top',
@@ -258,6 +295,7 @@ server <- function(input, output, session) {
               rownames = FALSE) %>%
       formatCurrency('Total_Comerciado', currency = 'US$ ', interval = 3, mark = ',', digits = 0)
   })
+  
   output$tabla_kilos <- renderDT({
     df_kg <- datos_kilos(); req(df_kg)
     df_kg_fmt <- df_kg %>%
@@ -269,11 +307,9 @@ server <- function(input, output, session) {
               rownames = FALSE)
   })
   
-  # Gráficos
   output$grafico_valor <- renderPlotly({ generar_grafico_plotly(datos_valor(), "USD") })
   output$grafico_kilos <- renderPlotly({ generar_grafico_plotly(datos_kilos(), "Kg") })
   
-  # --- MEJORA: Renderizado de las Cajas de Valor ---
   output$valor_total_box <- renderUI({
     df <- datos_valor(); req(df)
     total <- sum(df$Total_Comerciado, na.rm = TRUE)
@@ -282,6 +318,7 @@ server <- function(input, output, session) {
              tags$p(class = "value-box-label", "Valor Total de la Consulta")
     )
   })
+  
   output$kilos_total_box <- renderUI({
     df <- datos_kilos(); req(df)
     total <- sum(df$Total_Comerciado, na.rm = TRUE)
@@ -291,7 +328,6 @@ server <- function(input, output, session) {
     )
   })
   
-  # UI de Resultados con Pestañas
   output$resultados_ui <- renderUI({
     if (is.null(datos_valor()) && is.null(datos_kilos())) {
       if (input$enviar == 0) return(div(class="text-center", style="padding-top: 50px;", h4("A la espera de tu consulta...")))
@@ -300,7 +336,6 @@ server <- function(input, output, session) {
     tabs <- list()
     if (!is.null(datos_valor())) {
       tabs <- append(tabs, list(tabPanel("Resultados en Valor (USD)", 
-                                         # --- MEJORA: Se añade el uiOutput para la caja de valor ---
                                          uiOutput("valor_total_box"),
                                          DTOutput("tabla_valor"), hr(),
                                          plotlyOutput("grafico_valor")
@@ -308,7 +343,6 @@ server <- function(input, output, session) {
     }
     if (!is.null(datos_kilos())) {
       tabs <- append(tabs, list(tabPanel("Resultados en Volumen (KG)",
-                                         # --- MEJORA: Se añade el uiOutput para la caja de valor ---
                                          uiOutput("kilos_total_box"),
                                          DTOutput("tabla_kilos"), hr(),
                                          plotlyOutput("grafico_kilos")
